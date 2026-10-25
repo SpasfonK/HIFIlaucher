@@ -31,8 +31,15 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # Android SDK command-line tools + licences, so Gradle can fetch platform 35.
-      - uses: android-actions/setup-android@v3
+      # android-actions/setup-android@v3 still installs the "tools" package, which no longer
+      # exists in the SDK repository ("Failed to find package 'tools'"). The runners already
+      # ship the command-line tools, so install what compileSdk 35 needs directly.
+      - name: Install the Android SDK packages
+        run: |
+          SDKMANAGER="$(find "${ANDROID_HOME}/cmdline-tools" -name sdkmanager -type f | head -n1)"
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
       # Installs Gradle 8.9 itself and caches dependencies between runs. This repo has no
       # gradlew / wrapper jar, so the build calls `gradle` directly.
