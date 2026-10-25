@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch: # lets you start a build by hand from the Actions tab (works on a phone too)
+  workflow_dispatch: # start a build by hand from the Actions tab (works on a phone too)
 
 concurrency:
   group: build-${{ github.ref }}
@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    # Optional signing secrets. Without them the release build falls back to the debug key
-    # (see the build.gradle.kts snippet). Visible to `if:` conditions through the env context.
+    # Optional signing secrets. Without them the release build is signed with the debug
+    # key (see app/build.gradle.kts). Secrets are exposed to `if:` through the env context.
     env:
       KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
 
@@ -31,19 +31,18 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # Installs the Android SDK command-line tools and accepts the licences, so Gradle
-      # can download the platform that compileSdk asks for.
+      # Android SDK command-line tools + licences, so Gradle can fetch platform 35.
       - uses: android-actions/setup-android@v3
 
-      # Gradle caches (dependencies, wrapper, build cache) between runs.
+      # Installs Gradle 8.9 itself and caches dependencies between runs. This repo has no
+      # gradlew / wrapper jar, so the build calls `gradle` directly.
       - uses: gradle/actions/setup-gradle@v4
-
-      - name: Make the Gradle wrapper executable
-        run: chmod +x ./gradlew
+        with:
+          gradle-version: "8.9"
 
       # WheelEngineTest and AudioHeadersTest run on the JVM: fast, no emulator.
       - name: Unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: gradle testDebugUnitTest --stacktrace
 
       - name: Decode the signing keystore
         if: env.KEYSTORE_BASE64 != ''
@@ -52,7 +51,7 @@ jobs:
           echo "KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
+        run: gradle assembleRelease --stacktrace
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
