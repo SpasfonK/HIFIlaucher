@@ -49,6 +49,8 @@ data class PlayerUiState(
     val pendingSkip: Int = 0,
     val clock: String,
     val batteryPct: Int,
+    /** Id of the current item, so the library can mark and focus the playing track. */
+    val mediaId: String? = null,
 )
 
 data class PlayerActions(
@@ -59,6 +61,7 @@ data class PlayerActions(
     val onWheelRelease: (mode: WheelMode) -> Unit,
     val onToggleMode: () -> Unit,
     val onOpenDiagnostics: () -> Unit = {},
+    val onOpenLibrary: () -> Unit = {},
 )
 
 @Composable
@@ -70,7 +73,7 @@ fun PlayerScreen(ui: PlayerUiState, actions: PlayerActions, modifier: Modifier =
             .systemBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
-        StatusStrip(ui, actions.onOpenDiagnostics)
+        StatusStrip(ui, actions.onOpenDiagnostics, actions.onOpenLibrary)
 
         // The cover takes whatever height is left and stays square.
         Box(
@@ -84,7 +87,8 @@ fun PlayerScreen(ui: PlayerUiState, actions: PlayerActions, modifier: Modifier =
                 ui.cover,
                 Modifier
                     .fillMaxHeight()
-                    .aspectRatio(1f, matchHeightConstraintsFirst = true),
+                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                    .clickable(onClick = actions.onOpenLibrary),
             )
         }
 
@@ -116,7 +120,7 @@ fun PlayerScreen(ui: PlayerUiState, actions: PlayerActions, modifier: Modifier =
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun StatusStrip(ui: PlayerUiState, onLongPress: () -> Unit) {
+private fun StatusStrip(ui: PlayerUiState, onLongPress: () -> Unit, onOpenLibrary: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -133,7 +137,24 @@ private fun StatusStrip(ui: PlayerUiState, onLongPress: () -> Unit) {
                 .weight(1f)
                 .combinedClickable(onClick = {}, onLongClick = onLongPress),
         )
+        LibraryPill(onOpenLibrary)
+        Spacer(Modifier.width(14.dp))
         Text("${ui.batteryPct}%", color = HiFi.TextLo, fontSize = 14.sp, style = HiFi.Tnum)
+    }
+}
+
+@Composable
+private fun LibraryPill(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        Modifier
+            .clip(shape)
+            .border(1.dp, HiFi.Amber, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("Library", color = HiFi.Amber, fontSize = 13.sp)
     }
 }
 
@@ -190,9 +211,13 @@ private fun FormatRow(ui: PlayerUiState, onToggleMode: () -> Unit) {
         WheelMode.LIST -> "List"
     }
     val pillShape = RoundedCornerShape(14.dp)
+    // Nothing playing: no "0 kbps" placeholder.
+    val info = listOf(ui.codec, ui.format, if (ui.bitrateKbps > 0) "${ui.bitrateKbps} kbps" else "")
+        .filter { it.isNotEmpty() }
+        .joinToString("  ")
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
-            "${ui.codec}  ${ui.format}  ${ui.bitrateKbps} kbps",
+            info,
             color = HiFi.TextLo,
             fontSize = 13.sp,
             style = HiFi.Tnum,

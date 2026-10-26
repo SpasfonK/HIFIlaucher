@@ -13,7 +13,6 @@ import java.io.File
 
 data class Track(
     val id: Long,
-    val uri: Uri,
     val path: String,
     val title: String,
     val artist: String,
@@ -22,6 +21,9 @@ data class Track(
     val trackNo: Int,
     val folder: String,
 ) {
+    /** Derived from the id, so a Track can be built (and unit-tested) without Android. */
+    val uri: Uri get() = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
+
     companion object {
         const val EXTRA_DURATION = "durationMs"
         const val EXTRA_FOLDER = "folder"
@@ -95,7 +97,6 @@ class LibraryRepository(private val resolver: ContentResolver) {
                 val id = c.getLong(iId)
                 out += Track(
                     id = id,
-                    uri = ContentUris.withAppendedId(collection, id),
                     path = path,
                     title = c.getString(iTitle).clean() ?: file.nameWithoutExtension,
                     artist = c.getString(iArtist).clean() ?: "Unknown artist",

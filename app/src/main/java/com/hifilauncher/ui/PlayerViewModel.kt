@@ -18,6 +18,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.hifilauncher.audio.CoverLoader
 import com.hifilauncher.audio.LibraryRepository
+import com.hifilauncher.audio.LibraryTree
 import com.hifilauncher.audio.PlaybackService
 import com.hifilauncher.audio.ResumeStore
 import com.hifilauncher.audio.Track
@@ -64,6 +65,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             rescanJob = viewModelScope.launch {
                 delay(3_000)
                 tracks = LibraryRepository(ctx.contentResolver).scan()
+                _tree.value = LibraryTree(tracks)
             }
         }
     }
@@ -80,6 +82,12 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _diagnostics = MutableStateFlow<String?>(null)
     val diagnostics: StateFlow<String?> = _diagnostics.asStateFlow()
+
+    // Library browser. nav == null means the player is showing.
+    private val _tree = MutableStateFlow(LibraryTree(emptyList()))
+    val tree: StateFlow<LibraryTree> = _tree.asStateFlow()
+    private val _nav = MutableStateFlow<LibraryNav?>(null)
+    val nav: StateFlow<LibraryNav?> = _nav.asStateFlow()
 
     /**
      * Position ticks once a second, and only while a screen is collecting it (stateIn with
@@ -107,6 +115,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
         },
         onOpenDiagnostics = { _diagnostics.value = buildDiagnostics(ctx) },
+        onOpenLibrary = ::openLibrary,
     )
 
     private val playerListener = object : Player.Listener {
@@ -144,6 +153,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         if (tracks.isNotEmpty()) return
         viewModelScope.launch {
             tracks = LibraryRepository(ctx.contentResolver).scan()
+            _tree.value = LibraryTree(tracks)
             tryRestore()
         }
     }
@@ -196,6 +206,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 artist = md.artist?.toString().orEmpty(),
                 album = md.albumTitle?.toString().orEmpty(),
                 isPlaying = p.isPlaying,
+                mediaId = p.currentMediaItem?.mediaId,
                 durationMs = p.duration.coerceAtLeast(0L), // TIME_UNSET is a huge negative
                 volumePct = volumePct(),                   // also catches the hardware keys
             )
@@ -266,6 +277,53 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun requestOverlayPermission() {
         ctx.startActivity(overlayPermissionIntent(ctx))
+    }
+
+    // Library navigation
+
+    /** Opens on the folder of the track that is playing, with that track highlighted. */
+    fun openLibrary() {
+        val root = _tree.value.root
+        val playing = tracks.firstOrNull { it.id.toString() == _ui.value.mediaId }
+        val path = playing?.folder?.takeIf { it.startsWith(root) } ?: root
+        _nav.value = LibraryNav(path, hint = _ui.value.mediaId?.let { "s:$it" })
+    }
+
+    fun libraryOpen(path: String) {
+        _nav.value = LibraryNav(path, hint = null)
+    }
+
+    /** One level up, highlighting the folder we just left. At the top it returns to the player. */
+    fun libraryUp() {
+        val current = _nav.value ?: return
+        val parent = _tree.value.parent(current.path)
+        _nav.value = if (parent == null) null else LibraryNav(parent, hint = "f:${current.path}")
+    }
+
+    fun closeLibrary() {
+        _nav.value = null
+    }
+
+    /** Home key: back to the player from anywhere. */
+    fun goHome() {
+        _diagnostics.value = null
+        _nav.value = null
+    }
+
+    fun playFromLibrary(track: Track) {
+        playTrack(track)
+        _nav.value = null
+    }
+
+    /** Plays everything under a folder (capped), subfolders included. */
+    fun playFolder(path: String) {
+        val c = controller ?: return
+        val queue = _tree.value.tracksUnder(path).take(MAX_QUEUE)
+        if (queue.isEmpty()) return
+        c.setMediaItems(queue.map { it.toMediaItem() }, 0, 0L)
+        c.prepare()
+        c.play()
+        _nav.value = null
     }
 
     /** Escape hatches: switch the default home app back, or open Settings, from inside the app. */

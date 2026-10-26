@@ -33,6 +33,6 @@ class LauncherActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.hasCategory(Intent.CATEGORY_HOME)) vm.closeDiagnostics()
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) vm.goHome()
     }
 }

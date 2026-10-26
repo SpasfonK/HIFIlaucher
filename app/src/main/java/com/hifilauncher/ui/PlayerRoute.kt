@@ -54,6 +54,8 @@ fun PlayerRoute(vm: PlayerViewModel = viewModel()) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val position by vm.position.collectAsStateWithLifecycle()
     val diagnostics by vm.diagnostics.collectAsStateWithLifecycle()
+    val tree by vm.tree.collectAsStateWithLifecycle()
+    val nav by vm.nav.collectAsStateWithLifecycle()
 
     val permission = Manifest.permission.READ_EXTERNAL_STORAGE
     var granted by remember {
@@ -64,9 +66,16 @@ fun PlayerRoute(vm: PlayerViewModel = viewModel()) {
         if (granted) vm.loadLibrary() else ask.launch(permission)
     }
 
-    BackHandler { if (diagnostics != null) vm.closeDiagnostics() }
+    // Back never leaves the launcher: it closes diagnostics, or climbs the library.
+    BackHandler {
+        when {
+            diagnostics != null -> vm.closeDiagnostics()
+            nav != null -> vm.libraryUp()
+        }
+    }
 
     val report = diagnostics
+    val libraryNav = nav
     if (report != null) {
         DiagnosticsScreen(
             text = report,
@@ -75,6 +84,17 @@ fun PlayerRoute(vm: PlayerViewModel = viewModel()) {
             onHomeSettings = vm::openHomeSettings,
             onSystemSettings = vm::openSystemSettings,
             onClose = vm::closeDiagnostics,
+        )
+    } else if (libraryNav != null) {
+        LibraryScreen(
+            tree = tree,
+            nav = libraryNav,
+            nowPlayingId = ui.mediaId,
+            onOpen = vm::libraryOpen,
+            onUp = vm::libraryUp,
+            onPlayTrack = vm::playFromLibrary,
+            onPlayFolder = vm::playFolder,
+            onClose = vm::closeLibrary,
         )
     } else {
         PlayerScreen(ui.copy(positionMs = position), vm.actions)
@@ -130,7 +150,7 @@ fun DiagnosticsScreen(
 }
 
 @Composable
-private fun PillButton(label: String, modifier: Modifier, onClick: () -> Unit) {
+internal fun PillButton(label: String, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Box(
         modifier
